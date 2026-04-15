@@ -10,6 +10,7 @@ every transaction is started by pulling cs low and ends with pulling cs high
 69 4.2.3 Card Initialization and Identification Process
 123 4.7 Commands
 143 4.9 Responses
+329 7.3.2 Responses
 146 4.10 Three Status Information of SD Memory Card
 140 4.8 Card State Transition Table
 76 4.3 Data Transfer Mode
