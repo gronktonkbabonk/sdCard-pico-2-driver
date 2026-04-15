@@ -1,0 +1,17 @@
+init- 100khz
+running- 25mhz
+
+every transaction is started by pulling cs low and ends with pulling cs high
+*all* data is sent in 8bit bytes
+
+
+312 7. SPI Mode
+67 4.2 Card Identification Mode
+69 4.2.3 Card Initialization and Identification Process
+123 4.7 Commands
+143 4.9 Responses
+146 4.10 Three Status Information of SD Memory Card
+140 4.8 Card State Transition Table
+76 4.3 Data Transfer Mode
+103 4.3.9 Application-Specific Commands
+121 4.6 Error Conditions

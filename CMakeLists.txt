@@ -35,7 +35,7 @@ pico_sdk_init()
 
 # Add executable. Default name is the project name, version 0.1
 
-add_executable(sdCard-pico-2-driver sdcard.cpp )
+add_executable(sdCard-pico-2-driver sdcard.cpp sd.cpp )
 
 pico_set_program_name(sdCard-pico-2-driver "sdCard-pico-2-driver")
 pico_set_program_version(sdCard-pico-2-driver "0.1")

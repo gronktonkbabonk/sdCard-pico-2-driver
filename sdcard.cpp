@@ -2,35 +2,40 @@
 #include "pico/stdlib.h"
 #include "hardware/spi.h"
 
-// SPI Defines
-// We are going to use SPI 0, and allocate it to the following GPIO pins
-// Pins can be changed, see the GPIO function select table in the datasheet for information on GPIO assignments
-#define SPI_PORT spi0
-#define PIN_MISO 16
-#define PIN_CS   17
-#define PIN_SCK  18
-#define PIN_MOSI 19
+//https://nodeloop.org/guides/sd-card-spi-init-guide/
 
+const char FF_TOKEN = 0xFF;
 
-
-int main()
+class SDCard
 {
-    stdio_init_all();
+private:
+    /* data */
+public:
+    spi_inst_t *spi;
+    int cs;
+    SDCard(/* args */);
+    void sdCardInit();
+    int cmd(uint8_t cmd, uint32_t args, uint8_t crc);
+};
 
-    // SPI initialisation. This example will use SPI at 1MHz.
-    spi_init(SPI_PORT, 1000*1000);
-    gpio_set_function(PIN_MISO, GPIO_FUNC_SPI);
-    gpio_set_function(PIN_CS,   GPIO_FUNC_SIO);
-    gpio_set_function(PIN_SCK,  GPIO_FUNC_SPI);
-    gpio_set_function(PIN_MOSI, GPIO_FUNC_SPI);
-    
-    // Chip select is active-low, so we'll initialise it to a driven-high state
-    gpio_set_dir(PIN_CS, GPIO_OUT);
-    gpio_put(PIN_CS, 1);
-    // For more examples of SPI use see https://github.com/raspberrypi/pico-examples/tree/master/spi
+SDCard::SDCard(/* args */)
+{
+}
 
-    while (true) {
-        printf("Hello, world!\n");
-        sleep_ms(1000);
-    }
+void SDCard::sdCardInit(){
+
+}
+
+int SDCard::cmd(uint8_t cmd, uint32_t args, uint8_t crc){
+    gpio_put(cs,0);
+    uint8_t buf[6] = {
+        (uint8_t) (cmd | 0x40), //  make sure the first two bits are 01, 0 is the start bit and 1 indicating this device is host
+        (uint8_t) (args >> 24),
+        (uint8_t) (args >> 16),
+        (uint8_t) (args >> 8),
+        (uint8_t) (args),
+        (uint8_t) (crc | 0x01) // crc is 7 bits and it has to end with 1 (end bit)
+    };
+    spi_write_blocking(spi, buf, 6);
+    gpio_put(cs,1);
 }
