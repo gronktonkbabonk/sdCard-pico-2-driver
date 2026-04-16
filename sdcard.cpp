@@ -3,6 +3,7 @@
 #include <stdexcept>
 #include "pico/stdlib.h"
 #include "hardware/spi.h"
+#include "sdcard.h"
 
 //https://nodeloop.org/guides/sd-card-spi-init-guide/
 
@@ -11,24 +12,12 @@ const uint8_t FF_TOKEN = 0xFF;
 const char R1_IDLE_STATE = 1;
 const char R1_ILLEGAL_COMMAND = 1<<2;
 
-class SDCard
-{
-private:
-    int FFClock(int clocks=1);
-    uint8_t response[16];
-    void err(char* errMessage);
-public:
-    spi_inst_t *spi;
-    int cs;
-    SDCard(/* args */);
-    void sdCardInit();
-    int cmd(uint8_t cmd, uint32_t args, uint8_t crc, int extraResponseBits=0, bool release = true, bool skip1 = true);
-    void v1Init();
-    void v2Init();
-};
-
-SDCard::SDCard(/* args */)
-{
+SDCard::SDCard(spi_inst_t *spiInp, int csInp){
+    spi = spiInp;
+    cs = csInp;
+    gpio_set_dir(cs, GPIO_OUT);
+    gpio_put(cs,1); 
+    sdCardInit();
 }
 
 void SDCard::sdCardInit(){
@@ -49,37 +38,54 @@ void SDCard::sdCardInit(){
     //card is present
 
     int cmd8res = cmd(8, 0x1AA, 0x87, 4);
-    if(cmd8res == R1_IDLE_STATE) v1Init(); //v2 card present
-    else if(cmd8res == R1_ILLEGAL_COMMAND) v2Init();
+    if(cmd8res == R1_IDLE_STATE) v2Init(); //v2 card present
+    else if(cmd8res == R1_ILLEGAL_COMMAND) v1Init();
     else err("Bad response from SD, unable to determine version.");
 
-    spi_init(spi,1000*1000);
+    spi_init(spi,1000*1000*25);
 }
 
 void SDCard::v2Init(){
     if((response[3] & 0xF0) != 0x10) err("v2 Voltage out of range, Unusable card.");
     
-    cmd(58, 0, 0xfd);
-    uint32_t ocr = (response[0] << 24)|(response[1] << 16)|(response[2] << 8)|response[3]; //reconstructing ocr
-    if (!(ocr & ((1 << 20) | (1 << 21)))) err("v2 OCR Voltage out of range, Unusable card.");
-
+    
     int timeout = CMD_TIMEOUT;
     uint8_t r1;
     do
     {
         cmd(55,0,0x65, 0, false);  
         r1=cmd(41,0x40000000, 0, false);
-    } while (r1 != 0x00, timeout--);
+    } while (r1 != 0x00 && timeout--);
     if (timeout==0) err("Failed to initialise v2 card, timed out while waiting.");
+    
+    cmd(58, 0, 0xfd);
+    uint32_t ocr = (response[0] << 24)|(response[1] << 16)|(response[2] << 8)|response[3]; //reconstructing ocr
+    if (!(ocr & 0x00FF8000)) err("v2 OCR Voltage out of range, Unusable card.");
+    
+    addressMult = (((ocr >> 30) & 1)? 1 : 512);
     gpio_put(cs,1);
 }
 
 void SDCard::v1Init(){
-    if (cmd(58, 0, 0xfd));
+    int timeout = CMD_TIMEOUT;
+    uint8_t r1;
+    do
+    {
+        cmd(55,0,0x65, 0, false);  
+        r1=cmd(41,0, 0, false);
+    } while ((r1 != 0x00) && timeout--);
+    if (timeout==0) err("Failed to initialise v1 card, timed out while waiting.");
+    
+    cmd(58, 0, 0xfd);
     uint32_t ocr = (response[0] << 24)|(response[1] << 16)|(response[2] << 8)|response[3]; //reconstructing ocr
-    if (!(ocr & ((1 << 20) | (1 << 21)))) err("v2 OCR Voltage out of range, Unusable card.");
+    if (!(ocr & ((1 << 20) | (1 << 21)))) err("12 OCR Voltage out of range, Unusable card.");
 
+    cmd(16, 512, 0);
+    addressMult = 512;
+    gpio_put(cs,1);
+    
 }
+
 
 int SDCard::cmd(uint8_t cmd, uint32_t args, uint8_t crc, int extraResponseBytes, bool release, bool skip1){
     gpio_put(cs,0);
@@ -132,7 +138,7 @@ int SDCard::FFClock(int clocks){
     return 1;
 }
 
-void SDCard::err(char* errMessage){
+void SDCard::err(const char* errMessage){
     gpio_put(cs,1);
     FFClock();
     throw std::runtime_error(errMessage);

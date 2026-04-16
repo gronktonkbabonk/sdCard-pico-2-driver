@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include "pico/stdlib.h"
 #include "hardware/spi.h"
+#include "sdcard.h"
 
 //when in integration hell remember that the sd card must have power for 1 ms before commands can start being issued
 
@@ -27,9 +28,9 @@ int main()
     gpio_set_function(PIN_MOSI, GPIO_FUNC_SPI);
     
     // Chip select is active-low, so we'll initialise it to a driven-high state
-    gpio_set_dir(PIN_CS, GPIO_OUT);
-    gpio_put(PIN_CS, 1);
     // For more examples of SPI use see https://github.com/raspberrypi/pico-examples/tree/master/spi
+
+    SDCard sd(spi0, PIN_CS);
 
     while (true) {
         printf("Hello, world!\n");

@@ -30,12 +30,15 @@ include(pico_sdk_import.cmake)
 
 project(sdCard-pico-2-driver C CXX ASM)
 
+# Enable exception handling
+set(PICO_CXX_ENABLE_EXCEPTIONS 1)
+
 # Initialise the Raspberry Pi Pico SDK
 pico_sdk_init()
 
 # Add executable. Default name is the project name, version 0.1
 
-add_executable(sdCard-pico-2-driver sdcard.cpp sd.cpp )
+add_executable(sdCard-pico-2-driver sdcard.cpp sd.cpp sdcard.h)
 
 pico_set_program_name(sdCard-pico-2-driver "sdCard-pico-2-driver")
 pico_set_program_version(sdCard-pico-2-driver "0.1")
