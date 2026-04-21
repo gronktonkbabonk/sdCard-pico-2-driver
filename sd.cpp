@@ -3,11 +3,11 @@
 #include "hardware/spi.h"
 #include "sdcard.h"
 
-#define SPI_PORT spi1
-#define PIN_MISO 12
-#define PIN_SCK  10
-#define PIN_MOSI 27
-#define PIN_CS   13
+#define SPI_PORT spi0
+#define PIN_MISO 0
+#define PIN_SCK  2
+#define PIN_MOSI 3
+#define PIN_CS   1
 #define ONBLED 25
 
 
@@ -23,14 +23,14 @@ int main()
     gpio_init(ONBLED);
     gpio_set_dir(ONBLED,GPIO_OUT);
     
-    
+    gpio_put(ONBLED,1);
+
     while (!stdio_usb_connected()) {
         sleep_ms(100);
     }
     
     printf("Console connected, starting driver...\n");
 
-    gpio_put(ONBLED,1);
 
     SDCard sd(spi0, PIN_CS);
 

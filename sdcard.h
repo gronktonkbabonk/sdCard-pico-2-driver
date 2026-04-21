@@ -5,7 +5,7 @@ class SDCard
 {
 private:
     int FFClock(int clocks=1);
-    uint8_t response[4];
+    uint8_t response[16];
     void err(const char* errMessage);
     int addrMult;
 public:
