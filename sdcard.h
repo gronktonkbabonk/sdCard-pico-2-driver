@@ -6,7 +6,7 @@ class SDCard
 private:
     int FFClock(int clocks=1);
     uint8_t response[4];
-    void err(const char* errMessage);
+    void fatalErr(const char* errMessage);
     int addrMult;
 public:
     spi_inst_t *spi;
@@ -19,4 +19,5 @@ public:
     void v1Init();
     void v2Init();
     int readBlocks(uint32_t blockAddr, size_t readNum, uint8_t buf[]);
+    int writeBlocks(uint32_t blockAddr, size_t writeNum, uint8_t buf[]);
 };
