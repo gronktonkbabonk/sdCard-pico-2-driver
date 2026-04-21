@@ -188,7 +188,7 @@ int SDCard::writeBlocks(uint32_t blockAddr, size_t writeNum, uint8_t buf[]){
     spi_write_blocking(spi,&STOP_TRAN,1);
     gpio_put(cs,1);
     FFClock();
-    return 1
+    return 1;
 }
 
 int SDCard::FFClock(int clocks){
