@@ -34,7 +34,7 @@ void SDCard::sdCardInit(){
     bool present = false;
     for (size_t i = 0; i < 5; i++)
     {
-        if(cmd(0,0,0x95) == 0x01){
+        if(cmd(0,0,0x95,0,nullptr,true,true) == 0x01){
             present=true;
             break;
         }
@@ -44,12 +44,12 @@ void SDCard::sdCardInit(){
     }
     //card is present
 
-    int cmd8res = cmd(8, 0x1AA, 0x87, 4);
+    int cmd8res = cmd(8, 0x1AA, 0x87, 4, response,true,true);
     if(cmd8res == R1_IDLE_STATE) v2Init(); //v2 card present
     else if(cmd8res == R1_ILLEGAL_COMMAND) v1Init();
     else err("Bad response from SD, unable to determine version.");
 
-    cmd(59, 1, 0x67);
+    cmd(59, 1, 0x67,0,nullptr,true,true);
     printf("Sd card init successful! \n");
     spi_init(spi,1000*1000*25);
 }
@@ -63,12 +63,12 @@ void SDCard::v2Init(){
     uint8_t r1 = 0;
     do
     {
-        cmd(55,0,0x65, 0, response, false);  
-        r1=cmd(41,0x40000000, 0, false);
+        cmd(55,0,0x65,0,nullptr,false,true);  
+        r1=cmd(41,0x40000000, 0,0,nullptr,true,true);
     } while (r1 != 0x00 && timeout--);
     if (timeout==0) err("Failed to initialise v2 card, timed out while waiting.");
     
-    cmd(58, 0, 0xfd, 4);
+    cmd(58, 0, 0xfd, 4,response,true,true);
     uint32_t ocr = (response[0] << 24)|(response[1] << 16)|(response[2] << 8)|response[3]; //reconstructing ocr
     if (!(ocr & 0x00FF8000)) err("v2 OCR voltage out of range, Unusable card.");
     printf("v2 ocr voltage in range.\n");
@@ -86,17 +86,17 @@ void SDCard::v1Init(){
     uint8_t r1;
     do
     {
-        cmd(55,0,0x65, 0, response, false);  
-        r1=cmd(41,0, 0, false);
+        cmd(55,0,0x65, 0, response, false,true);  
+        r1=cmd(41,0, 0, 0,nullptr,true,true);
     } while ((r1 != 0x00) && timeout--);
     if (timeout==0) err("Failed to initialise v1 card, timed out while waiting.");
     
-    cmd(58, 0, 0xfd, 4 );
+    cmd(58, 0, 0xfd, 4, response, true, true);
     uint32_t ocr = (response[0] << 24)|(response[1] << 16)|(response[2] << 8)|response[3]; //reconstructing ocr
     if (!(ocr & 0x00FF8000)) err("v1 OCR voltage out of range, Unusable card.");
     printf("v1 ocr voltage in range.\n");
 
-    cmd(16, 512, 0);
+    cmd(16, 512, 0, 0, nullptr, true, true);
     addrMult = 512;
     gpio_put(cs,1);
     return;    
@@ -163,9 +163,9 @@ int SDCard::readBlocks(uint32_t blockAddr, size_t readNum, uint8_t buf[]){
     blockAddr *= addrMult;
     readNum *= addrMult;
     int readCmd = (readNum == 1)? 17:18;
-    if(cmd(readCmd,blockAddr,0, readNum, buf,false) != 0) err("I/O error for read cmd");
+    if(cmd(readCmd,blockAddr,0, readNum, buf,false, true) != 0) err("I/O error for read cmd");
     uint8_t dummybuf[0];
-    if(readNum != 0) if(cmd(12,0,FF_TOKEN, 0,dummybuf,true) == 0x01) err("I/O error for multiread cmd.");
+    if(readNum != 0) if(cmd(12,0,FF_TOKEN, 0,dummybuf,true, true) == 0x01) err("I/O error for multiread cmd.");
     return 1;
 }
 

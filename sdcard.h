@@ -5,7 +5,6 @@ class SDCard
 {
 private:
     int FFClock(int clocks=1);
-    uint8_t dummybuf[0];
     uint8_t response[4];
     void err(const char* errMessage);
     int addrMult;
@@ -16,7 +15,7 @@ public:
     void sdCardInit();
     uint8_t dummyCmd(uint8_t cmd);
     uint8_t dummyResponse(uint8_t cmd, int i);
-    int cmd(uint8_t cmd, uint32_t args, uint8_t crc, int extraResponseBytes =0, const uint8_t responseBytesArray[]={}, bool release = true, bool skip1 = true);
+    int cmd(uint8_t cmd, uint32_t args, uint8_t crc, int extraResponseBytes, uint8_t responseBytesArray[], bool release, bool skip1);
     void v1Init();
     void v2Init();
     int readBlocks(uint32_t blockAddr, size_t readNum, uint8_t buf[]);
