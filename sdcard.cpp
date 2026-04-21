@@ -4,18 +4,23 @@
 #include "pico/stdlib.h"
 #include "hardware/spi.h"
 #include "sdcard.h"
+#include "ff16/source/ff.h"
 
 // Resources used:
+//https://github.com/sbcshop/MicroSD-Breakout/blob/main/sdcard.py -> implementation example
 //https://nodeloop.org/guides/sd-card-spi-init-guide/
 //https://electronics.stackexchange.com/questions/77417/what-is-the-correct-command-sequence-for-microsd-card-initialization-in-spi
 //2023 sd card physical layer simplified spec
+//https://elm-chan.org/fsw/ff/ -> lots of stuff here
 //duckduckgo lol
 
 
-const int CMD_TIMEOUT = 10;
+const int CMD_TIMEOUT = 1000;
 const uint8_t FF_TOKEN = 0xFF;
 const char R1_IDLE_STATE = 1;
 const char R1_ILLEGAL_COMMAND = 1<<2;
+const uint8_t DATA_START = 0xFE;
+const uint8_t STOP_TRAN = 0xFD;
 
 SDCard::SDCard(spi_inst_t *spiInp, int csInp){
     spi = spiInp;
@@ -23,6 +28,10 @@ SDCard::SDCard(spi_inst_t *spiInp, int csInp){
     gpio_set_dir(cs, GPIO_OUT);
     gpio_put(cs,1); 
     sdCardInit();
+}
+
+int SDCard::getCardSize(){
+    cmd(9,0,0,16,response,true,false);
 }
 
 void SDCard::sdCardInit(){
@@ -41,7 +50,7 @@ void SDCard::sdCardInit(){
         }
     }
     if(!present){
-        err("No sd card is present.");
+        fatalErr("No sd card is present.");
     }
     //card is present
     printf("Card is present\n");
@@ -49,7 +58,7 @@ void SDCard::sdCardInit(){
     int cmd8res = cmd(8, 0x1AA, 0x87, 4, response,true,false);
     if(cmd8res == R1_IDLE_STATE) v2Init(); //v2 card present
     else if(cmd8res == R1_ILLEGAL_COMMAND) v1Init();
-    else err("Bad response from SD, unable to determine version.");
+    else fatalErr("Bad response from SD, unable to determine version.");
 
     cmd(59, 1, 0x67,0,nullptr,true,false);
     printf("Sd card init successful! \n");
@@ -58,7 +67,7 @@ void SDCard::sdCardInit(){
 
 void SDCard::v2Init(){
     printf("v2 card detected\n");
-    if((response[3] & 0xF0) != 0x10) err("v2 voltage out of range, Unusable card.");
+    if((response[3] & 0xF0) != 0x10) fatalErr("v2 voltage out of range, Unusable card.");
     
     
     int timeout = CMD_TIMEOUT;
@@ -68,11 +77,11 @@ void SDCard::v2Init(){
         cmd(55,0,0x65,0,nullptr,false,false);  
         r1=cmd(41,0x40000000, 0,0,nullptr,true,false);
     } while (r1 != 0x00 && timeout--);
-    if (timeout==0) err("Failed to initialise v2 card, timed out while waiting.");
+    if (timeout==0) fatalErr("Failed to initialise v2 card, timed out while waiting.");
     
     cmd(58, 0, 0xfd, 4,response,true,false);
     uint32_t ocr = (response[0] << 24)|(response[1] << 16)|(response[2] << 8)|response[3]; //reconstructing ocr
-    if (!(ocr & 0x00FF8000)) err("v2 OCR voltage out of range, Unusable card.");
+    if (!(ocr & 0x00FF8000)) fatalErr("v2 OCR voltage out of range, Unusable card.");
     printf("v2 ocr voltage in range.\n");
 
     
@@ -91,11 +100,11 @@ void SDCard::v1Init(){
         cmd(55,0,0x65, 0, response, false,false);  
         r1=cmd(41,0, 0, 0,nullptr,true,false);
     } while ((r1 != 0x00) && timeout--);
-    if (timeout==0) err("Failed to initialise v1 card, timed out while waiting.");
+    if (timeout==0) fatalErr("Failed to initialise v1 card, timed out while waiting.");
     
     cmd(58, 0, 0xfd, 4, response, true, false);
     uint32_t ocr = (response[0] << 24)|(response[1] << 16)|(response[2] << 8)|response[3]; //reconstructing ocr
-    if (!(ocr & 0x00FF8000)) err("v1 OCR voltage out of range, Unusable card.");
+    if (!(ocr & 0x00FF8000)) fatalErr("v1 OCR voltage out of range, Unusable card.");
     printf("v1 ocr voltage in range.\n");
 
     cmd(16, 512, 0, 0, nullptr, true, false);
@@ -103,7 +112,6 @@ void SDCard::v1Init(){
     gpio_put(cs,1);
     return;    
 }
-
 
 int SDCard::cmd(uint8_t cmd, uint32_t args, uint8_t crc, int extraResponseBytes, uint8_t responseBytesArray[], bool release, bool skip1){
     gpio_put(cs,0);
@@ -174,11 +182,31 @@ int SDCard::cmd(uint8_t cmd, uint32_t args, uint8_t crc, int extraResponseBytes,
 
 int SDCard::readBlocks(uint32_t blockAddr, size_t readNum, uint8_t buf[]){
     blockAddr *= addrMult;
-    readNum *= addrMult;
-    int readCmd = (readNum == 1)? 17:18;
-    if(cmd(readCmd,blockAddr,0, readNum, buf,false, false) != 0) err("I/O error for read cmd");
-    uint8_t dummybuf[0];
-    if(readNum != 0) if(cmd(12,0,FF_TOKEN, 0,dummybuf,true, true) == 0x01) err("I/O error for multiread cmd.");
+    int readCmd = (readNum == 1)? 17 : 18;
+    if(cmd(readCmd,blockAddr,0, readNum, buf,false, false) != 0) fatalErr("I/O error for read cmd");
+    if(readNum != 0) if(cmd(12,0,FF_TOKEN,0,nullptr,true, true) == 0x01) fatalErr("I/O error for multiread cmd.");
+    return 1;
+}
+
+int SDCard::writeBlocks(uint32_t blockAddr, size_t writeNum, uint8_t buf[]){
+    blockAddr *= addrMult;
+    int writeCmd = (writeNum==1)? 24 : 25;
+    if(cmd(writeCmd,blockAddr,0,0,nullptr,true,false) != 0) fatalErr("I/O error for write cmd");
+    gpio_put(cs,0);
+    uint8_t response;
+    spi_write_read_blocking(spi, &DATA_START,&response,1);
+    spi_write_blocking(spi,buf,writeNum);
+    FFClock(2);
+    if (response & 0x05){
+        printf("Error while writing: %i\n", response);
+    }
+    gpio_put(cs,1);
+    FFClock();
+
+    gpio_put(cs,0);
+    spi_write_blocking(spi,&STOP_TRAN,1);
+    gpio_put(cs,1);
+    FFClock();
     return 1;
 }
 
@@ -191,7 +219,7 @@ int SDCard::FFClock(int clocks){
     return 1;
 }
 
-void SDCard::err(const char* errMessage){
+void SDCard::fatalErr(const char* errMessage){
     gpio_put(cs,1);
     FFClock();
     throw std::runtime_error(errMessage);
@@ -216,4 +244,29 @@ uint8_t SDCard::dummyResponse(uint8_t cmd, int i){
     uint8_t response58[4] = {0,0xFF,0x80,0};
     if (cmd==0x08) return response8[i];
     else return response58[i];
+}
+enum {
+	RES_OK = 0,		/* 0: Successful */
+	RES_ERROR,		/* 1: R/W Error */
+	RES_WRPRT,		/* 2: Write Protected */
+	RES_NOTRDY,		/* 3: Not Ready */
+	RES_PARERR		/* 4: Invalid Parameter */
+};
+
+int SDCard::ioctl(int cmd, void* buff){
+    switch (cmd)
+    {
+    case 0:
+        return RES_OK;
+    case 1:
+        return RES_OK;
+    case 2:
+        *(WORD*)buff=512;
+        return RES_OK;
+    case 3:
+        *(DWORD*)buff = 1;
+        return RES_OK;
+    case 4:
+        return RES_OK;
+    return -1;
 }
