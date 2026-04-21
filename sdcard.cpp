@@ -4,6 +4,7 @@
 #include "pico/stdlib.h"
 #include "hardware/spi.h"
 #include "sdcard.h"
+#include "ff16/source/ff.h"
 
 // Resources used:
 //https://github.com/sbcshop/MicroSD-Breakout/blob/main/sdcard.py -> implementation example
@@ -26,6 +27,10 @@ SDCard::SDCard(spi_inst_t *spiInp, int csInp){
     gpio_set_dir(cs, GPIO_OUT);
     gpio_put(cs,1); 
     sdCardInit();
+}
+
+int SDCard::getCardSize(){
+    cmd(9,0,0,16,response,true,false);
 }
 
 void SDCard::sdCardInit(){
@@ -225,4 +230,31 @@ uint8_t SDCard::dummyResponse(uint8_t cmd, int i){
     uint8_t response58[4] = {0,0xFF,0x80,0};
     if (cmd==0x08) return response8[i];
     else return response58[i];
+}
+enum {
+	RES_OK = 0,		/* 0: Successful */
+	RES_ERROR,		/* 1: R/W Error */
+	RES_WRPRT,		/* 2: Write Protected */
+	RES_NOTRDY,		/* 3: Not Ready */
+	RES_PARERR		/* 4: Invalid Parameter */
+};
+
+int SDCard::ioctl(int cmd, void* buff){
+    switch (cmd)
+    {
+    case 0:
+        return RES_OK;
+    case 1:
+        return RES_OK;
+    case 2:
+        *(WORD*)buff=512;
+        return RES_OK;
+    case 3:
+        *(DWORD*)buff = 1;
+        return RES_OK;
+    case 4:
+        return RES_OK;
+    default:
+        return -1;
+    }
 }
