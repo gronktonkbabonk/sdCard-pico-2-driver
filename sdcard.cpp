@@ -30,14 +30,10 @@ SDCard::SDCard(spi_inst_t *spiInp, int csInp){
     sdCardInit();
 }
 
-uint64_t bitSlicer(uint8_t buf[], size_t width, int startLoc){
-    startLoc = 127-startLoc;
+uint64_t bitSlicer(uint8_t buf[], size_t width, int startLoc, int arrSize){
+    startLoc = arrSize-1-startLoc;
     uint64_t returnNum = 0;
-    for(size_t i = 0; i<width; i++) {
-        returnNum |= (((buf[(startLoc+i) / 8] >> (7- (startLoc+i) % 8)) & 1)<<i);
-        printf("%d",(((buf[(startLoc+i) / 8] >> ((startLoc+i) % 8)) & 1)));
-    }
-    printf("\n0000000001110100011101\n");
+    for(size_t i = 0; i < width; i++) returnNum |= ((buf[(startLoc+i)/8] >> (7-((startLoc+i)%8)))&1)<<(width-1-i);
     return returnNum;
 }
 
@@ -66,15 +62,15 @@ void SDCard::getCardSize(int ver){
     putchar('\n');
     
     if (ver == 1){
-        int READ_BL_LEN = bitSlicer(response, 4, 83);
-        int C_SIZE_MULT = bitSlicer(response, 3, 78);
-        int C_SIZE = bitSlicer(response, 12, 54);
+        int READ_BL_LEN = bitSlicer(response, 4, 83,128);
+        int C_SIZE_MULT = bitSlicer(response, 3, 78,128);
+        int C_SIZE = bitSlicer(response, 12, 54,128);
         int BLOCK_LEN = 1<<READ_BL_LEN;
         int MULT = 1<<(C_SIZE_MULT+2);
         int BLOCKNR = (C_SIZE+1)*MULT;
         capacity = BLOCKNR * BLOCK_LEN;
     }else{
-        uint64_t C_SIZE = bitSlicer(response,22,69);
+        uint64_t C_SIZE = bitSlicer(response,22,69,128);
         printf("%llu\n",C_SIZE);
         capacity = ((C_SIZE+1ull) << 19);
     }
@@ -129,7 +125,8 @@ void SDCard::v2Init(){
     //printf("ended 55/41 in %i cycles\n", CMD_TIMEOUT-timeout);
     
     cmd(58, 0, 0xfd, 4,true,false);
-    uint32_t ocr = (response[0] << 24)|(response[1] << 16)|(response[2] << 8)|response[3]; //reconstructing ocr
+    // uint32_t ocr = (response[0] << 24)|(response[1] << 16)|(response[2] << 8)|response[3]; //reconstructing ocr
+    uint32_t ocr = bitSlicer(response, 32,0,32);
     if (!(ocr & 0x00FF8000)) fatalErr("v2 OCR voltage out of range, Unusable card.");
     // //printf("v2 ocr voltage in range.\n");
 
@@ -157,7 +154,8 @@ void SDCard::v1Init(){
     
     
     cmd(58, 0, 0xfd, 4,  true, false);
-    uint32_t ocr = (response[0] << 24)|(response[1] << 16)|(response[2] << 8)|response[3]; //reconstructing ocr
+    // uint32_t ocr = (response[0] << 24)|(response[1] << 16)|(response[2] << 8)|response[3]; //reconstructing ocr
+    uint32_t ocr = bitSlicer(response, 32,0,32);
     if (!(ocr & 0x00FF8000)) fatalErr("v1 OCR voltage out of range, Unusable card.");
     //printf("v1 ocr voltage in range.\n");
     
