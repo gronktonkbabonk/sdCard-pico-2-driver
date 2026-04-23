@@ -1,10 +1,12 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdexcept>
+#include <time.h> 
 #include "pico/stdlib.h"
 #include "hardware/spi.h"
 #include "sdcard.h"
 #include "ff16/source/ff.h"
+#include "ff16/source/diskio.h"
 
 // Resources used:
 //https://github.com/sbcshop/MicroSD-Breakout/blob/main/sdcard.py -> implementation example
@@ -27,7 +29,7 @@ SDCard::SDCard(spi_inst_t *spiInp, int csInp){
     cs = csInp;
     gpio_set_dir(cs, GPIO_OUT);
     gpio_put(cs,1); 
-    sdCardInit();
+    disk_initialize(0);
 }
 
 uint64_t bitSlicer(uint8_t buf[], size_t width, int startLoc, int arrSize){
@@ -50,17 +52,7 @@ void SDCard::getCardSize(int ver){
     spi_read_blocking(spi, FF_TOKEN, response, 16);
     gpio_put(cs,1);   
     FFClock(2);
-
-
-    printf("CSD register: \n");
-    for (size_t i = 0; i < 16; i++){
-        for (size_t j = 0; j < 8; j++){
-            printf("%d", ((response[i]>>7-j) &1));
-        }
-        putchar(' ');
-    }
-    putchar('\n');
-    
+   
     if (ver == 1){
         int READ_BL_LEN = bitSlicer(response, 4, 83,128);
         int C_SIZE_MULT = bitSlicer(response, 3, 78,128);
@@ -71,12 +63,12 @@ void SDCard::getCardSize(int ver){
         capacity = BLOCKNR * BLOCK_LEN;
     }else{
         uint64_t C_SIZE = bitSlicer(response,22,69,128);
-        printf("%llu\n",C_SIZE);
         capacity = ((C_SIZE+1ull) << 19);
     }
 }
 
-void SDCard::sdCardInit(){
+DSTATUS SDCard::disk_initialize(BYTE pdrv){
+    if (initialized) return 0;
     sleep_ms(1);
     printf("init started \n");
     spi_init(spi, 1000*100); // clock rate to 400khz for init  
@@ -103,8 +95,9 @@ void SDCard::sdCardInit(){
     else fatalErr("Bad response from SD, unable to determine version.");
 
     printf("Sd card init successful! \n");
-    printf("Detected card capacity: %llu bytes\n",capacity);
+    printf("Detected card capacity: %f GB\n",(float)capacity/(float)1000000000);
     spi_init(spi,1000*1000*25);
+    return 0;
 }
 
 void SDCard::v2Init(){
@@ -113,7 +106,7 @@ void SDCard::v2Init(){
     
     int timeout = CMD_TIMEOUT;
     uint8_t r1 = 0;
-    //printf("started 55/41\n");
+    printf("started 55/41\n");
     do
     {
         cmd(55,0,0x65,0,false,false);  
@@ -122,11 +115,10 @@ void SDCard::v2Init(){
     if (timeout==0) fatalErr("Failed to initialise v2 card, timed out while waiting.");
     gpio_put(cs,1);
     FFClock();
-    //printf("ended 55/41 in %i cycles\n", CMD_TIMEOUT-timeout);
+    printf("ended 55/41 in %i cycles\n", CMD_TIMEOUT-timeout);
     
     cmd(58, 0, 0xfd, 4,true,false);
-    // uint32_t ocr = (response[0] << 24)|(response[1] << 16)|(response[2] << 8)|response[3]; //reconstructing ocr
-    uint32_t ocr = bitSlicer(response, 32,0,32);
+    uint32_t ocr = (response[0] << 24)|(response[1] << 16)|(response[2] << 8)|response[3]; //reconstructing ocr
     if (!(ocr & 0x00FF8000)) fatalErr("v2 OCR voltage out of range, Unusable card.");
     // //printf("v2 ocr voltage in range.\n");
 
@@ -141,7 +133,7 @@ void SDCard::v1Init(){
     
     int timeout = CMD_TIMEOUT;
     uint8_t r1;
-    //printf("started 55/41\n");
+    printf("started 55/41\n");
     do
     {
         cmd(55,0,0x65, 0,  false,false);  
@@ -150,12 +142,11 @@ void SDCard::v1Init(){
     if (timeout==0) fatalErr("Failed to initialise v1 card, timed out while waiting.");
     gpio_put(cs,1);
     FFClock();
-    //printf("ended 55/41 in %i cycles\n", CMD_TIMEOUT-timeout);
+    printf("ended 55/41 in %i cycles\n", CMD_TIMEOUT-timeout);
     
     
     cmd(58, 0, 0xfd, 4,  true, false);
-    // uint32_t ocr = (response[0] << 24)|(response[1] << 16)|(response[2] << 8)|response[3]; //reconstructing ocr
-    uint32_t ocr = bitSlicer(response, 32,0,32);
+    uint32_t ocr = (response[0] << 24)|(response[1] << 16)|(response[2] << 8)|response[3]; //reconstructing ocr
     if (!(ocr & 0x00FF8000)) fatalErr("v1 OCR voltage out of range, Unusable card.");
     //printf("v1 ocr voltage in range.\n");
     
@@ -214,7 +205,7 @@ int SDCard::cmd(uint8_t cmd, uint32_t args, uint8_t crc, int extraResponseBytes,
     return -1;
 }
 
-void SDCard::readBlocks(uint32_t blockAddr, size_t readNum, uint8_t buf[]){
+DRESULT SDCard::disk_read(BYTE pdrv, BYTE* buf, LBA_t blockAddr, UINT readNum){
     blockAddr *= addrMult;
     int readCmd = (readNum == 1)? 17 : 18;
     if(cmd(readCmd,blockAddr,0,0, false, false) != 0) fatalErr("I/O error for read cmd");
@@ -230,9 +221,10 @@ void SDCard::readBlocks(uint32_t blockAddr, size_t readNum, uint8_t buf[]){
     }
     gpio_put(cs,1);    
     if(readNum > 1){if(cmd(12,0,FF_TOKEN,0,true, true) == 0x01) fatalErr("I/O error for multiread cmd.");}
+    return RES_OK;
 }
 
-int SDCard::writeBlocks(uint32_t blockAddr, size_t writeNum, uint8_t buf[]){
+DRESULT SDCard::disk_write(BYTE pdrv, BYTE* buf, LBA_t blockAddr, UINT writeNum){
     blockAddr *= addrMult;
     int writeCmd = (writeNum==1)? 24 : 25;
     if(cmd(writeCmd,blockAddr,0,0,true,false) != 0) fatalErr("I/O error for write cmd");
@@ -259,7 +251,8 @@ int SDCard::writeBlocks(uint32_t blockAddr, size_t writeNum, uint8_t buf[]){
     spi_write_blocking(spi,&STOP_TRAN,1);
     gpio_put(cs,1);
     FFClock();
-    return 1;
+    initialized = true;
+    return RES_OK;
 }
 
 int SDCard::FFClock(int clocks){
@@ -297,15 +290,8 @@ uint8_t SDCard::dummyResponse(uint8_t cmd, int i){
     if (cmd==0x08) return response8[i];
     else return response58[i];
 }
-enum {
-	RES_OK = 0,		/* 0: Successful */
-	RES_ERROR,		/* 1: R/W Error */
-	RES_WRPRT,		/* 2: Write Protected */
-	RES_NOTRDY,		/* 3: Not Ready */
-	RES_PARERR		/* 4: Invalid Parameter */
-};
 
-int SDCard::ioctl(int cmd, void* buff){
+DRESULT SDCard::disk_ioctl(int cmd, void* buff){
 
     switch (cmd){
     case 0:
@@ -321,5 +307,26 @@ int SDCard::ioctl(int cmd, void* buff){
     case 4:
         return RES_OK;
     }
-    return -1;
+    return RES_OK;
+}
+
+DSTATUS SDCard::disk_status(BYTE pdrv){
+    return RES_OK;
+}
+
+DWORD SDCard::get_fattime (void)
+{
+    time_t t;
+    struct tm *stm;
+
+
+    t = time(0);
+    stm = localtime(&t);
+
+    return (DWORD)(stm->tm_year - 80) << 25 |
+           (DWORD)(stm->tm_mon + 1) << 21 |
+           (DWORD)stm->tm_mday << 16 |
+           (DWORD)stm->tm_hour << 11 |
+           (DWORD)stm->tm_min << 5 |
+           (DWORD)stm->tm_sec >> 1;
 }

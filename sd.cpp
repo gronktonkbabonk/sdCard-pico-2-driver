@@ -42,7 +42,7 @@ int main()
 
     printf("Card inserted. Initialising...\n");
     SDCard sd(SPI_PORT, PIN_CS);
-    
+
     // SDCard* sd = nullptr;
     // bool inserted = false;
 
