@@ -1,12 +1,12 @@
+#include "sdcard.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdexcept>
 #include <time.h> 
 #include "pico/stdlib.h"
 #include "hardware/spi.h"
-#include "sdcard.h"
-#include "ff16/source/ff.h"
-#include "ff16/source/diskio.h"
+#include "ff.h"
+#include "diskio.h"
 
 // Resources used:
 //https://github.com/sbcshop/MicroSD-Breakout/blob/main/sdcard.py -> implementation example
@@ -17,20 +17,13 @@
 //duckduckgo lol
 
 
-const int CMD_TIMEOUT = 1000;
-const uint8_t FF_TOKEN = 0xFF;
-const char R1_IDLE_STATE = 1;
-const char R1_ILLEGAL_COMMAND = 1<<2;
-const uint8_t DATA_START = 0xFE;
-const uint8_t STOP_TRAN = 0xFD;
-
-SDCard::SDCard(spi_inst_t *spiInp, int csInp){
-    spi = spiInp;
-    cs = csInp;
-    gpio_set_dir(cs, GPIO_OUT);
-    gpio_put(cs,1); 
-    disk_initialize(0);
-}
+spi_inst_t *spi;
+uint8_t response[16];
+uint64_t capacity = 0;
+int addrMult;
+bool initialised = false;
+int cs;
+int cd;
 
 uint64_t bitSlicer(uint8_t buf[], size_t width, int startLoc, int arrSize){
     startLoc = arrSize-1-startLoc;
@@ -39,7 +32,7 @@ uint64_t bitSlicer(uint8_t buf[], size_t width, int startLoc, int arrSize){
     return returnNum;
 }
 
-void SDCard::getCardSize(int ver){
+void getCardSize(int ver){
     cmd(9,0,0,0,false,false);
 
     uint8_t reply;    
@@ -67,8 +60,8 @@ void SDCard::getCardSize(int ver){
     }
 }
 
-DSTATUS SDCard::disk_initialize(BYTE pdrv){
-    if (initialized) return 0;
+DSTATUS disk_initialize(BYTE pdrv){
+    if (initialised) return 0;
     sleep_ms(1);
     printf("init started \n");
     spi_init(spi, 1000*100); // clock rate to 400khz for init  
@@ -100,7 +93,7 @@ DSTATUS SDCard::disk_initialize(BYTE pdrv){
     return 0;
 }
 
-void SDCard::v2Init(){
+void v2Init(){
     //printf("v2 card detected\n");
     if((response[2] & 0x0F) != 0x01) fatalErr("v2 voltage out of range, Unusable card.");
     
@@ -127,7 +120,7 @@ void SDCard::v2Init(){
     return;
 }
 
-void SDCard::v1Init(){
+void v1Init(){
     //printf("v1 card detected\n");
 
     
@@ -156,7 +149,7 @@ void SDCard::v1Init(){
     return;    
 }
 
-int SDCard::cmd(uint8_t cmd, uint32_t args, uint8_t crc, int extraResponseBytes, bool release, bool skip1){
+int cmd(uint8_t cmd, uint32_t args, uint8_t crc, int extraResponseBytes, bool release, bool skip1){
     gpio_put(cs,0);
     FFClock();
     uint8_t buf[6] = {
@@ -205,7 +198,7 @@ int SDCard::cmd(uint8_t cmd, uint32_t args, uint8_t crc, int extraResponseBytes,
     return -1;
 }
 
-DRESULT SDCard::disk_read(BYTE pdrv, BYTE* buf, LBA_t blockAddr, UINT readNum){
+DRESULT disk_read(BYTE pdrv, BYTE* buf, LBA_t blockAddr, UINT readNum){
     blockAddr *= addrMult;
     int readCmd = (readNum == 1)? 17 : 18;
     if(cmd(readCmd,blockAddr,0,0, false, false) != 0) fatalErr("I/O error for read cmd");
@@ -224,7 +217,7 @@ DRESULT SDCard::disk_read(BYTE pdrv, BYTE* buf, LBA_t blockAddr, UINT readNum){
     return RES_OK;
 }
 
-DRESULT SDCard::disk_write(BYTE pdrv, BYTE* buf, LBA_t blockAddr, UINT writeNum){
+DRESULT disk_write(BYTE pdrv, BYTE* buf, LBA_t blockAddr, UINT writeNum){
     blockAddr *= addrMult;
     int writeCmd = (writeNum==1)? 24 : 25;
     if(cmd(writeCmd,blockAddr,0,0,true,false) != 0) fatalErr("I/O error for write cmd");
@@ -251,11 +244,10 @@ DRESULT SDCard::disk_write(BYTE pdrv, BYTE* buf, LBA_t blockAddr, UINT writeNum)
     spi_write_blocking(spi,&STOP_TRAN,1);
     gpio_put(cs,1);
     FFClock();
-    initialized = true;
     return RES_OK;
 }
 
-int SDCard::FFClock(int clocks){
+int FFClock(int clocks){
     for (size_t i = 0; i < clocks; i++)
     {
         spi_write_blocking(spi, &FF_TOKEN, 1);
@@ -264,57 +256,39 @@ int SDCard::FFClock(int clocks){
     return 1;
 }
 
-void SDCard::fatalErr(const char* errMessage){
+void fatalErr(const char* errMessage){
     gpio_put(cs,1);
     FFClock();
     throw std::runtime_error(errMessage);
 }
 
-uint8_t SDCard::dummyCmd(uint8_t cmd){
-    switch (cmd)
-    {
-    case 0:
-        return 0x01;
-    case 0x08:
-        // return 0x01;
-        return R1_ILLEGAL_COMMAND;
-    case 0x29:
-        return 0x00;
-    }
-    return R1_ILLEGAL_COMMAND;
-}
-
-uint8_t SDCard::dummyResponse(uint8_t cmd, int i){
-    uint8_t response8[4] = {0,0,0,0x10};
-    uint8_t response58[4] = {0,0xFF,0x80,0};
-    if (cmd==0x08) return response8[i];
-    else return response58[i];
-}
-
-DRESULT SDCard::disk_ioctl(int cmd, void* buff){
-
+DRESULT disk_ioctl(BYTE pdrv, BYTE cmd, void* buf){
+    if (!initialised) return RES_NOTRDY;
     switch (cmd){
-    case 0:
+    case CTRL_SYNC:
         return RES_OK;
-    case 1:
+    case GET_SECTOR_COUNT:
+        *(LBA_t*)buf = (capacity/512)+1;
         return RES_OK;
-    case 2:
-        *(WORD*)buff=512;
+    case GET_SECTOR_SIZE:
+        *(WORD*)buf=512;
         return RES_OK;
-    case 3:
-        *(DWORD*)buff = 1;
+    case GET_BLOCK_SIZE:
+        *(DWORD*)buf = 1;
         return RES_OK;
-    case 4:
+    case CTRL_TRIM:
         return RES_OK;
     }
-    return RES_OK;
+    return RES_PARERR;
 }
 
-DSTATUS SDCard::disk_status(BYTE pdrv){
-    return RES_OK;
+DSTATUS disk_status(BYTE pdrv){
+    if(!initialised) return STA_NOINIT;
+    if(gpio_get(cd) == 0) return STA_NODISK;
+    return 0;
 }
 
-DWORD SDCard::get_fattime (void)
+DWORD get_fattime (void)
 {
     time_t t;
     struct tm *stm;

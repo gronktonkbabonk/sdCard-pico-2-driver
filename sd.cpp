@@ -9,7 +9,7 @@
 #define PIN_SCK  2
 #define PIN_MOSI 3
 #define PIN_CS   1
-#define CD 22
+#define PIN_CD 22
 #define ONBLED 25
 
 
@@ -18,9 +18,9 @@ int main()
 {
     stdio_init_all();
 
-    gpio_init(CD);
-    gpio_set_dir(CD,GPIO_IN);
-    gpio_pull_up(CD);
+    gpio_init(PIN_CD);
+    gpio_set_dir(PIN_CD,GPIO_IN);
+    gpio_pull_up(PIN_CD);
     gpio_set_function(PIN_MISO, GPIO_FUNC_SPI);
     gpio_set_function(PIN_CS,   GPIO_FUNC_SIO);
     gpio_set_function(PIN_SCK,  GPIO_FUNC_SPI);
@@ -36,29 +36,22 @@ int main()
     
     printf("Console connected. Waiting for card insertion.\n");
 
-    while(!(gpio_get(CD)==0)){
+    while(!(gpio_get(PIN_CD)==0)){
         sleep_ms(100);
     }
 
     printf("Card inserted. Initialising...\n");
-    SDCard sd(SPI_PORT, PIN_CS);
 
-    // SDCard* sd = nullptr;
-    // bool inserted = false;
 
+    spi = SPI_PORT;
+    cs = PIN_CS;
+    cd = PIN_CD;
+    gpio_set_dir(cs, GPIO_OUT);
+    gpio_put(cs,1);
+
+    disk_initialize(0);
 
     while(true){
-        // if (inserted == false && gpio_get(CD) == 0){
-        //     inserted = true;
-        //     printf("Card inserted. Initialising...\n");
-        //     sd = new SDCard(SPI_PORT, PIN_CS);
-        // }
-        // if(gpio_get(CD) == 1 && inserted == true){
-        //     inserted = false;
-        //     printf("Card removed.\n");
-        //     delete sd;
-        //     sd = nullptr;
-        // }
         gpio_put(ONBLED,1);
         sleep_ms(250);
         gpio_put(ONBLED,0);
