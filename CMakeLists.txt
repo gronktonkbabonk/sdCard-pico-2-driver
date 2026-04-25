@@ -42,14 +42,11 @@ add_executable(
     sdCard-pico-2-driver
     sdcard.cpp
     sd.cpp
-    sdcard.h
     diskio.c
     diskio.h
     ff.c
-    ff.h
-    ffconf.h
     ffsystem.c
-    farfs/ffunicode.c
+    ffunicode.c
 )
 
 pico_set_program_name(sdCard-pico-2-driver "sdCard-pico-2-driver")

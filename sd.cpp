@@ -1,7 +1,8 @@
 #include <stdio.h>
 #include "pico/stdlib.h"
 #include "hardware/spi.h"
-#include "sdcard.h"
+#include "sdHardware.h"
+#include "ff.h"
 #include <cstring>
 
 #define SPI_PORT spi0
@@ -12,10 +13,9 @@
 #define PIN_CD 22
 #define ONBLED 25
 
+FATFS fat;
 
-
-int main()
-{
+void initialise(){
     stdio_init_all();
 
     gpio_init(PIN_CD);
@@ -48,13 +48,29 @@ int main()
     cd = PIN_CD;
     gpio_set_dir(cs, GPIO_OUT);
     gpio_put(cs,1);
+}
 
-    disk_initialize(0);
+int main()
+{
+    initialise();
 
-    while(true){
-        gpio_put(ONBLED,1);
-        sleep_ms(250);
-        gpio_put(ONBLED,0);
-        sleep_ms(250);
+    FIL fil;        /* File object */
+    char line[100]; /* Line buffer */
+    FRESULT fr;     /* FatFs return code */
+
+
+    /* Give a work area to the default drive */
+    f_mount(&fat, "", 0);
+
+    /* Open a text file */
+    fr = f_open(&fil, "message.txt", FA_READ);
+    if (fr) return (int)fr;
+
+    /* Read every line and display it */
+    while (f_gets(line, sizeof line, &fil)) {
+        printf("%s", line);
     }
+
+    /* Close the file */
+    f_close(&fil);
 }

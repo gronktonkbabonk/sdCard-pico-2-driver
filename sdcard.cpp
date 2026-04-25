@@ -1,4 +1,5 @@
-#include "sdcard.h"
+#include "sdHardware.h"
+#include "sdSoftware.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdexcept>
@@ -15,7 +16,6 @@
 //2023 sd card physical layer simplified spec
 //https://elm-chan.org/fsw/ff/ -> lots of stuff here
 //duckduckgo lol
-
 
 spi_inst_t *spi;
 uint8_t response[16];
@@ -60,7 +60,7 @@ void getCardSize(int ver){
     }
 }
 
-DSTATUS disk_initialize(BYTE pdrv){
+extern "C" int initialiseCard(){
     if (initialised) return 0;
     sleep_ms(1);
     printf("init started \n");
@@ -91,6 +91,7 @@ DSTATUS disk_initialize(BYTE pdrv){
     printf("Detected card capacity: %f GB\n",(float)capacity/(float)1000000000);
     spi_init(spi,1000*1000*25);
     return 0;
+    initialised = true;
 }
 
 void v2Init(){
@@ -198,7 +199,7 @@ int cmd(uint8_t cmd, uint32_t args, uint8_t crc, int extraResponseBytes, bool re
     return -1;
 }
 
-DRESULT disk_read(BYTE pdrv, BYTE* buf, LBA_t blockAddr, UINT readNum){
+extern "C" int readBlocks(uint8_t buf[], uint32_t blockAddr, unsigned int readNum){
     blockAddr *= addrMult;
     int readCmd = (readNum == 1)? 17 : 18;
     if(cmd(readCmd,blockAddr,0,0, false, false) != 0) fatalErr("I/O error for read cmd");
@@ -217,7 +218,7 @@ DRESULT disk_read(BYTE pdrv, BYTE* buf, LBA_t blockAddr, UINT readNum){
     return RES_OK;
 }
 
-DRESULT disk_write(BYTE pdrv, BYTE* buf, LBA_t blockAddr, UINT writeNum){
+extern "C" int writeBlocks(const uint8_t buf[], uint32_t blockAddr, unsigned int writeNum){
     blockAddr *= addrMult;
     int writeCmd = (writeNum==1)? 24 : 25;
     if(cmd(writeCmd,blockAddr,0,0,true,false) != 0) fatalErr("I/O error for write cmd");
@@ -262,7 +263,7 @@ void fatalErr(const char* errMessage){
     throw std::runtime_error(errMessage);
 }
 
-DRESULT disk_ioctl(BYTE pdrv, BYTE cmd, void* buf){
+extern "C" int sdIoctl(unsigned int cmd, void* buf){
     if (!initialised) return RES_NOTRDY;
     switch (cmd){
     case CTRL_SYNC:
@@ -282,13 +283,13 @@ DRESULT disk_ioctl(BYTE pdrv, BYTE cmd, void* buf){
     return RES_PARERR;
 }
 
-DSTATUS disk_status(BYTE pdrv){
+extern "C" int getStatus(){
     if(!initialised) return STA_NOINIT;
     if(gpio_get(cd) == 0) return STA_NODISK;
     return 0;
 }
 
-DWORD get_fattime (void)
+extern "C" DWORD get_fattime (void)
 {
     time_t t;
     struct tm *stm;
