@@ -74,16 +74,12 @@ int main()
     }
 
     char file[50];
-    uint16_t file_index= 0;
     while (true) {
-        int c = getchar_timeout_us(100);
-        if (c != PICO_ERROR_TIMEOUT && file_index < 50) {
-        file[file_index++] = (c & 0xFF);
-        } else {
-        break;
-        }
+        char c = getchar();
+        if(c == '\n') break;
+        else printf("%c",c);
     }
-//   return file_index;
+    putchar('\n');
 
     /* Open a text file */
     fr = f_open(&fil, file, FA_READ);
