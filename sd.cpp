@@ -17,6 +17,7 @@ FATFS fat;
 
 void initialise(){
     stdio_init_all();
+    setvbuf(stdout, NULL, _IONBF, 0);
 
     gpio_init(PIN_CD);
     gpio_set_dir(PIN_CD,GPIO_IN);
@@ -34,7 +35,7 @@ void initialise(){
         sleep_ms(100);
     }
     
-    printf("Console connected. Waiting for card insertion.\n");
+    printf("\n\n=====================START SESSION=====================\n\n\nConsole connected. Waiting for card insertion.\n");
 
     while(!(gpio_get(PIN_CD)==0)){
         sleep_ms(100);
@@ -42,7 +43,7 @@ void initialise(){
 
     printf("Card inserted. Initialising...\n");
 
-
+    debug = false;
     spi = SPI_PORT;
     cs = PIN_CS;
     cd = PIN_CD;
@@ -54,21 +55,47 @@ int main()
 {
     initialise();
 
+    DIR dir;
+    FILINFO fno;
     FIL fil;        /* File object */
-    char line[100]; /* Line buffer */
+    char line[100]; /* Line file */
     FRESULT fr;     /* FatFs return code */
 
-
     /* Give a work area to the default drive */
-    f_mount(&fat, "", 0);
+    fr = f_mount(&fat, "", 0);
+    if (fr == FR_OK) printf("Mount OK!\n");
+    else printf("Mount failed: %i\n", fr);
+    
+    if (f_opendir(&dir, "/") == FR_OK) {
+        while (f_readdir(&dir, &fno) == FR_OK && fno.fname[0]) {
+            printf("Found: %s\n", fno.fname);
+        }
+        f_closedir(&dir);
+    }
+
+    char file[50];
+    uint16_t file_index= 0;
+    while (true) {
+        int c = getchar_timeout_us(100);
+        if (c != PICO_ERROR_TIMEOUT && file_index < 50) {
+        file[file_index++] = (c & 0xFF);
+        } else {
+        break;
+        }
+    }
+//   return file_index;
 
     /* Open a text file */
-    fr = f_open(&fil, "slasher mix.m3u", FA_READ);
-    if (fr) return (int)fr;
+    fr = f_open(&fil, file, FA_READ);
 
+    if (fr){
+        printf("fr: %i\n", fr);
+        // return (int)fr;
+    }
     /* Read every line and display it */
     while (f_gets(line, sizeof line, &fil)) {
         printf("%s", line);
+    sleep_ms(5);
     }
 
     /* Close the file */

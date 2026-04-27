@@ -6,7 +6,7 @@
 /* This is an example of glue functions to attach various exsisting      */
 /* storage control modules to the FatFs module with a defined API.       */
 /*-----------------------------------------------------------------------*/
-
+#include <stdio.h>
 #include "ff.h"			/* Basic definitions of FatFs */
 #include "diskio.h"		/* Declarations FatFs MAI */
 
@@ -59,8 +59,12 @@ DRESULT disk_read (
 	UINT count		/* Number of sectors to read */
 )
 {
-	DRESULT res;
-	return readBlocks(buff, sector, count);
+	// printf("sector: %i\nread count: %i\n",sector,count);
+	DRESULT res = readBlocks(buff, sector, count);
+	// for(size_t i = 0; i<(count*512); i++){
+	// 	printf("%02x",buff[i]);
+	// }
+	return res;
 
 }
 

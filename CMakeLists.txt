@@ -43,7 +43,6 @@ add_executable(
     sdcard.cpp
     sd.cpp
     diskio.c
-    diskio.h
     ff.c
     ffsystem.c
     ffunicode.c

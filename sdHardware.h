@@ -3,13 +3,14 @@
 
 #ifndef SDHARDWARE_H
 #define SDHARDWARE_H
-    const int CMD_TIMEOUT = 1000;
+    const int CMD_TIMEOUT = 100000000;
     const uint8_t FF_TOKEN = 0xFF;
     const uint8_t R1_IDLE_STATE = 1;
     const uint8_t R1_ILLEGAL_COMMAND = 1<<2;
     const uint8_t DATA_START = 0xFE;
     const uint8_t STOP_TRAN = 0xFD;
 
+    extern bool debug;
     extern spi_inst_t *spi;
     extern uint8_t response[16];
     extern uint64_t capacity;
