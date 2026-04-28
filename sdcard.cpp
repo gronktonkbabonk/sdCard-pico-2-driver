@@ -170,8 +170,7 @@ int cmd(uint8_t cmd, uint32_t args, uint8_t crc, int extraResponseBytes, bool re
     
     memset(response, 0, 16);
     
-
-    spi_write_blocking(spi, buf, 6);
+    spi_write_blocking(spi, buf, 6); //this WILL hang forever if the breakout is not wired correctly
     
     if(skip1){
         FFClock();

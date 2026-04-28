@@ -10,7 +10,7 @@
 #define PIN_SCK  2
 #define PIN_MOSI 3
 #define PIN_CS   1
-#define PIN_CD 22
+#define PIN_CD 10
 #define ONBLED 25
 
 FATFS fat;
@@ -103,6 +103,6 @@ int main(){
     f_write(&fil, "a poo\r\n", 7, &bw);
     f_close(&fil);
     printf("file closed\n");  
-    printf(getfres(f_mount(NULL, "", 1)));
+    f_unmount("");
     printf("Card unmounted \n");
 }
