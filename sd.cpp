@@ -1,5 +1,4 @@
-// Copyright (c) 2026 gronktonkbabonk
-
+// Copyright (c) 20xx gronktonkbabonk
 
 #include <stdio.h>
 #include "pico/stdlib.h"

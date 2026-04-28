@@ -1,4 +1,4 @@
-// Copyright (c) 2026 gronktonkbabonk
+// Copyright (c) 20xx gronktonkbabonk
 
 #include "sdHardware.h"
 #include "sdSoftware.h"
