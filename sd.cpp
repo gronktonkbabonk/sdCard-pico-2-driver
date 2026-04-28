@@ -43,12 +43,38 @@ void initialise(){
 
     printf("Card inserted. Initialising...\n");
 
-    debug = false;
+    debug = true;
     spi = SPI_PORT;
     cs = PIN_CS;
     cd = PIN_CD;
     gpio_set_dir(cs, GPIO_OUT);
     gpio_put(cs,1);
+}
+
+const char* getfres(FRESULT res) {
+    switch (res) {
+        case FR_OK: return "FR_OK (Succeeded)";
+        case FR_DISK_ERR: return "FR_DISK_ERR (A hard error occurred in the low level disk I/O layer)";
+        case FR_INT_ERR: return "FR_INT_ERR (Assertion failed)";
+        case FR_NOT_READY: return "FR_NOT_READY (The physical drive cannot work)";
+        case FR_NO_FILE: return "FR_NO_FILE (File not found)";
+        case FR_NO_PATH: return "FR_NO_PATH (Path not found)";
+        case FR_INVALID_NAME: return "FR_INVALID_NAME (Invalid pathname)";
+        case FR_DENIED: return "FR_DENIED (Access denied)";
+        case FR_EXIST: return "FR_EXIST (File already exists)";
+        case FR_INVALID_OBJECT: return "FR_INVALID_OBJECT (Invalid file/directory object)";
+        case FR_WRITE_PROTECTED: return "FR_WRITE_PROTECTED (Write protected)";
+        case FR_INVALID_DRIVE: return "FR_INVALID_DRIVE (Invalid drive number)";
+        case FR_NOT_ENABLED: return "FR_NOT_ENABLED (Filesystem not enabled)";
+        case FR_NO_FILESYSTEM: return "FR_NO_FILESYSTEM (No valid filesystem)";
+        case FR_MKFS_ABORTED: return "FR_MKFS_ABORTED (Format aborted)";
+        case FR_TIMEOUT: return "FR_TIMEOUT (Operation timeout)";
+        case FR_LOCKED: return "FR_LOCKED (File locked)";
+        case FR_NOT_ENOUGH_CORE: return "FR_NOT_ENOUGH_CORE (Insufficient memory)";
+        case FR_TOO_MANY_OPEN_FILES: return "FR_TOO_MANY_OPEN_FILES (Too many open files)";
+        case FR_INVALID_PARAMETER: return "FR_INVALID_PARAMETER (Invalid parameter)";
+        default: return "UNKNOWN FRESULT";
+    }
 }
 
 int main()
@@ -57,43 +83,29 @@ int main()
 
     DIR dir;
     FILINFO fno;
-    FIL fil;        /* File object */
-    char line[100]; /* Line file */
-    FRESULT fr;     /* FatFs return code */
+    FIL fil;
+    char write[10000];
+    FRESULT fr;
 
-    /* Give a work area to the default drive */
     fr = f_mount(&fat, "", 0);
     if (fr == FR_OK) printf("Mount OK!\n");
     else printf("Mount failed: %i\n", fr);
     
-    if (f_opendir(&dir, "/") == FR_OK) {
-        while (f_readdir(&dir, &fno) == FR_OK && fno.fname[0]) {
-            printf("Found: %s\n", fno.fname);
-        }
-        f_closedir(&dir);
-    }
-
+    // if (f_opendir(&dir, "/") == FR_OK) {
+    //     while (f_readdir(&dir, &fno) == FR_OK && fno.fname[0]) {
+    //         printf("Found: %s\n", fno.fname);
+    //     }
+    //     f_closedir(&dir);
+    // }
+    
+    size_t i = 0;
     char file[50];
-    while (true) {
-        char c = getchar();
-        if(c == '\n') break;
-        else printf("%c",c);
-    }
-    putchar('\n');
+    UINT bw;
 
-    /* Open a text file */
-    fr = f_open(&fil, file, FA_READ);
-
-    if (fr){
-        printf("fr: %i\n", fr);
-        // return (int)fr;
-    }
-    /* Read every line and display it */
-    while (f_gets(line, sizeof line, &fil)) {
-        printf("%s", line);
-    sleep_ms(5);
-    }
-
-    /* Close the file */
+    fr = f_open(&fil, "test.txt", FA_WRITE | FA_CREATE_ALWAYS);
+    f_write(&fil, "Hello SD card!\r\n", 17, &bw);
     f_close(&fil);
+    printf("file closed\n");    
+    printf(getfres(f_mount(NULL, "", 1)));
+    printf("Card unmounted \n");
 }

@@ -203,7 +203,7 @@ extern "C" int readBlocks(uint8_t buf[], uint32_t blockAddr, unsigned int readNu
     blockAddr *= addrMult;
     int readCmd = (readNum == 1)? 17 : 18;
     int result = cmd(readCmd,blockAddr,0,0, false, false);
-    if(debug) printf("%02x\n",result);
+    // if(debug) printf("cmd r1:%02x\n",result);
     if(result != 0) fatalErr("I/O error for read cmd");
     uint8_t reply;    
     for (size_t i = 0; i < readNum; i++){
@@ -211,10 +211,9 @@ extern "C" int readBlocks(uint8_t buf[], uint32_t blockAddr, unsigned int readNu
         do{
             spi_read_blocking(spi, FF_TOKEN, &reply,1);
             cmdtimeout--;
-            // printf("%02x\n", response);
         }while (reply != DATA_START && cmdtimeout > 0);
         if(cmdtimeout == 0) fatalErr("Cmd timeout while waiting for response token");
-        if (debug) printf("Start token detected: %02x\n, %i",reply, cmdtimeout);
+        if (debug) printf("Start token detected\n");
         spi_read_blocking(spi, FF_TOKEN, buf+(i*512), 512);
         FFClock(2);
     }
@@ -226,31 +225,50 @@ extern "C" int readBlocks(uint8_t buf[], uint32_t blockAddr, unsigned int readNu
 extern "C" int writeBlocks(const uint8_t buf[], uint32_t blockAddr, unsigned int writeNum){
     blockAddr *= addrMult;
     int writeCmd = (writeNum==1)? 24 : 25;
-    if(cmd(writeCmd,blockAddr,0,0,true,false) != 0) fatalErr("I/O error for write cmd");
-    gpio_put(cs,0);
+    if(cmd(writeCmd,blockAddr,0,0,false,false) != 0) fatalErr("I/O error for write cmd");
+    spi_write_blocking(spi, &DATA_START, 1);
     uint8_t response;
-    if(debug) printf("Scanning for start token\n");
-    uint8_t r1;
-    do{
-        spi_read_blocking(spi, FF_TOKEN, &r1, 1);
-        if(debug) printf("Token detected: 0x%02x\n",r1);
-        sleep_ms(1);
-    } while(r1 != FF_TOKEN);
-    if(debug) printf("Start token detected\n");
-    spi_write_read_blocking(spi, &DATA_START, &response, 1);
-    spi_write_blocking(spi,buf,writeNum);
-    FFClock(2);
-    if (response & 0x05){
-        if(debug) printf("Error while writing: %i\n", response);
+    int cmdtimeout = CMD_TIMEOUT;
+    for (size_t i = 0; i < writeNum; i++){
+        spi_write_blocking(spi, buf+(i*512), 512);
+        FFClock(2); //crc :3
+        do{
+            spi_read_blocking(spi, FF_TOKEN, &response, 1);
+            cmdtimeout--;
+        } while(response == 0 && cmdtimeout > 0);
+        if(cmdtimeout == 0) fatalErr("timeout waiting for block response");
+        if (response != 0x05) fatalErr("error while writing block");
     }
-    gpio_put(cs,1);
-    FFClock();
+    if(writeNum>1) spi_write_blocking(spi, &STOP_TRAN, 1);
+    
 
-    gpio_put(cs,0);
-    spi_write_blocking(spi,&STOP_TRAN,1);
-    gpio_put(cs,1);
-    FFClock();
-    return RES_OK;
+
+
+    // uint8_t response;
+    // if(debug) printf("Scanning for start token\n");
+    // uint8_t r1;
+    // int cmdtimeout = CMD_TIMEOUT;
+    // do{
+    //     spi_read_blocking(spi, FF_TOKEN, &r1, 1);
+    //     sleep_ms(1);
+    //     cmdtimeout--;
+    // } while(r1 == 0 && cmdtimeout > 0);
+    // if (cmdtimeout == 0) fatalErr("Timeout waiting for card to become ready to write to");
+    // if(debug) printf("Start token detected\n");
+    // spi_write_read_blocking(spi, &DATA_START, &response, 1);
+    // spi_write_blocking(spi,buf,writeNum);
+    // FFClock(2);
+    // if (response & 0x05){
+    //     if(debug) printf("Error while writing: %02x\n", response);
+    // }
+    // gpio_put(cs,1);
+    // FFClock();
+
+    // gpio_put(cs,0);
+    // spi_write_blocking(spi,&STOP_TRAN,1);
+    // gpio_put(cs,1);
+    // FFClock();
+    // return RES_OK;
 }
 
 int FFClock(int clocks){
