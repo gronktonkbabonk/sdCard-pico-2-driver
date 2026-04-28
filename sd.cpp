@@ -1,3 +1,6 @@
+// Copyright (c) 2026 gronktonkbabonk
+
+
 #include <stdio.h>
 #include "pico/stdlib.h"
 #include "hardware/spi.h"

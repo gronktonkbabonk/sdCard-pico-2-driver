@@ -1,3 +1,5 @@
+// Copyright (c) 2026 gronktonkbabonk
+
 #include "sdHardware.h"
 #include "sdSoftware.h"
 #include <stdio.h>
