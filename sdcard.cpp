@@ -33,7 +33,7 @@ uint64_t bitSlicer(uint8_t buf[], size_t width, int startLoc, int arrSize){
     return returnNum;
 }
 
-void getCardSize(int ver){
+int getCardSize(int ver){
     cmd(9,0,0,0,false,false);
 
     uint8_t reply;    
@@ -42,7 +42,7 @@ void getCardSize(int ver){
         spi_read_blocking(spi, FF_TOKEN, &reply,1);
         cmdtimeout--;
     }while (reply != DATA_START && cmdtimeout > 0);
-    if(cmdtimeout == 0) fatalErr("timeout while waiting for csd register.");
+    if(cmdtimeout == 0) return fatalErr("timeout while waiting for csd register.");
     spi_read_blocking(spi, FF_TOKEN, response, 16);
     gpio_put(cs,1);   
     FFClock(2);
@@ -59,6 +59,7 @@ void getCardSize(int ver){
         uint64_t C_SIZE = bitSlicer(response,22,69,128);
         capacity = ((C_SIZE+1ull) << 19);
     }
+    return 0;
 }
 
 extern "C" int initialiseCard(){
@@ -78,7 +79,7 @@ extern "C" int initialiseCard(){
         }
     }
     if(!present){
-        fatalErr("No sd card is present.");
+        return fatalErr("No sd card is present.");
     }
     //card is present
     if(debug) printf("Card is present\n");
@@ -86,7 +87,7 @@ extern "C" int initialiseCard(){
     int cmd8res = cmd(8, 0x1AA, 0x87, 4, true,false);
     if(cmd8res == R1_IDLE_STATE) v2Init(); //v2 card present
     else if(cmd8res == R1_ILLEGAL_COMMAND) v1Init();
-    else fatalErr("Bad response from SD, unable to determine version.");
+    else return fatalErr("Bad response from SD, unable to determine version.");
 
     printf("Sd card init successful! \n");
     printf("Detected card capacity: %f GB\n",(float)capacity/(float)1000000000);
@@ -95,9 +96,9 @@ extern "C" int initialiseCard(){
     return 0;
 }
 
-void v2Init(){
+int v2Init(){
     if(debug) printf("v2 card detected\n");
-    if((response[2] & 0x0F) != 0x01) fatalErr("v2 voltage out of range, Unusable card.");
+    if((response[2] & 0x0F) != 0x01) return fatalErr("v2 voltage out of range, Unusable card.");
     
     int timeout = CMD_TIMEOUT;
     uint8_t r1 = 0;
@@ -107,22 +108,22 @@ void v2Init(){
         cmd(55,0,0x65,0,false,false);  
         r1=cmd(41,0x40000000, 0,0,true,false);
     } while (r1 != 0x00 && timeout--);
-    if (timeout==0) fatalErr("Failed to initialise v2 card, timed out while waiting.");
+    if (timeout==0) return fatalErr("Failed to initialise v2 card, timed out while waiting.");
     gpio_put(cs,1);
     FFClock();
     if(debug) printf("ended 55/41 in %i cycles\n", CMD_TIMEOUT-timeout);
     
     cmd(58, 0, 0xfd, 4,true,false);
     uint32_t ocr = (response[0] << 24)|(response[1] << 16)|(response[2] << 8)|response[3]; //reconstructing ocr
-    if (!(ocr & 0x00FF8000)) fatalErr("v2 OCR voltage out of range, Unusable card.");
+    if (!(ocr & 0x00FF8000)) return fatalErr("v2 OCR voltage out of range, Unusable card.");
     if(debug) printf("v2 ocr voltage in range.\n");
 
     getCardSize(2);    
     addrMult = (((ocr >> 30) & 1)? 1 : 512);
-    return;
+    return 0;
 }
 
-void v1Init(){
+int v1Init(){
     if(debug) printf("v1 card detected\n");
 
     
@@ -134,7 +135,7 @@ void v1Init(){
         cmd(55,0,0x65, 0,  false,false);  
         r1=cmd(41,0, 0, 0,true,false);
     } while ((r1 != 0x00) && timeout--);
-    if (timeout==0) fatalErr("Failed to initialise v1 card, timed out while waiting.");
+    if (timeout==0) return fatalErr("Failed to initialise v1 card, timed out while waiting.");
     gpio_put(cs,1);
     FFClock();
     if(debug) printf("ended 55/41 in %i cycles\n", CMD_TIMEOUT-timeout);
@@ -142,13 +143,13 @@ void v1Init(){
     
     cmd(58, 0, 0xfd, 4,  true, false);
     uint32_t ocr = (response[0] << 24)|(response[1] << 16)|(response[2] << 8)|response[3]; //reconstructing ocr
-    if (!(ocr & 0x00FF8000)) fatalErr("v1 OCR voltage out of range, Unusable card.");
+    if (!(ocr & 0x00FF8000)) return fatalErr("v1 OCR voltage out of range, Unusable card.");
     if(debug) printf("v1 ocr voltage in range.\n");
     
     cmd(16, 512, 0, 0, true, false);
     getCardSize(1);    
     addrMult = 512;
-    return;    
+    return 0;    
 }
 
 int cmd(uint8_t cmd, uint32_t args, uint8_t crc, int extraResponseBytes, bool release, bool skip1){
@@ -204,7 +205,7 @@ extern "C" int readBlocks(uint8_t buf[], uint32_t blockAddr, unsigned int readNu
     int readCmd = (readNum == 1)? 17 : 18;
     int result = cmd(readCmd,blockAddr,0,0, false, false);
     // if(debug) printf("cmd r1:%02x\n",result);
-    if(result != 0) fatalErr("I/O error for read cmd");
+    if(result != 0) return fatalErr("I/O error for read cmd");
     uint8_t reply;    
     for (size_t i = 0; i < readNum; i++){
         int cmdtimeout = CMD_TIMEOUT;
@@ -212,78 +213,58 @@ extern "C" int readBlocks(uint8_t buf[], uint32_t blockAddr, unsigned int readNu
             spi_read_blocking(spi, FF_TOKEN, &reply,1);
             cmdtimeout--;
         }while (reply != DATA_START && cmdtimeout > 0);
-        if(cmdtimeout == 0) fatalErr("Cmd timeout while waiting for response token");
+        if(cmdtimeout == 0) return fatalErr("Cmd timeout while waiting for response token");
         if (debug) printf("Start token detected\n");
         spi_read_blocking(spi, FF_TOKEN, buf+(i*512), 512);
         FFClock(2);
     }
     gpio_put(cs,1);    
-    if(readNum > 1){if(cmd(12,0,FF_TOKEN,0,true, true) == 0x01) fatalErr("I/O error for multiread cmd.");}
+    if(readNum > 1){if(cmd(12,0,FF_TOKEN,0,true, true) == 0x01) return fatalErr("I/O error for multiread cmd.");}
     return RES_OK;
 }
 
 extern "C" int writeBlocks(const uint8_t buf[], uint32_t blockAddr, unsigned int writeNum){
     blockAddr *= addrMult;
     int writeCmd = (writeNum==1)? 24 : 25;
-    if(cmd(writeCmd,blockAddr,0,0,false,false) != 0) fatalErr("I/O error for write cmd");
-    spi_write_blocking(spi, &DATA_START, 1);
+    uint8_t startToken = (writeNum == 1)? 0xFE : 0xFC; // selecting which start token to use :3
+    if(cmd(writeCmd,blockAddr,0,0,false,false) != 0) return fatalErr("I/O error for write cmd");
     uint8_t response;
-    int cmdtimeout = CMD_TIMEOUT;
     for (size_t i = 0; i < writeNum; i++){
+        spi_write_blocking(spi, &startToken, 1);    
         spi_write_blocking(spi, buf+(i*512), 512);
         FFClock(2); //crc :3
+        int cmdtimeout = CMD_TIMEOUT;
         do{
             spi_read_blocking(spi, FF_TOKEN, &response, 1);
-            cmdtimeout--;
-        } while(response == 0 && cmdtimeout > 0);
-        if(cmdtimeout == 0) fatalErr("timeout waiting for block response");
-        if (response != 0x05) fatalErr("error while writing block");
+        } while(response == 0xFF && cmdtimeout-- > 0);
+        if(cmdtimeout == 0) return fatalErr("timeout waiting for block response");
+        if ((response&0x1f) != 0x05) return fatalErr("error while writing block", response);
+        cmdtimeout = CMD_TIMEOUT;
+        do{
+            spi_read_blocking(spi, FF_TOKEN, &response, 1);
+        } while(response == 0x00 && cmdtimeout-- > 0);
+        if(cmdtimeout == 0) return fatalErr("Timeout waiting for data write to finish.");
+
     }
     if(writeNum>1) spi_write_blocking(spi, &STOP_TRAN, 1);
-    
-
-
-
-    // uint8_t response;
-    // if(debug) printf("Scanning for start token\n");
-    // uint8_t r1;
-    // int cmdtimeout = CMD_TIMEOUT;
-    // do{
-    //     spi_read_blocking(spi, FF_TOKEN, &r1, 1);
-    //     sleep_ms(1);
-    //     cmdtimeout--;
-    // } while(r1 == 0 && cmdtimeout > 0);
-    // if (cmdtimeout == 0) fatalErr("Timeout waiting for card to become ready to write to");
-    // if(debug) printf("Start token detected\n");
-    // spi_write_read_blocking(spi, &DATA_START, &response, 1);
-    // spi_write_blocking(spi,buf,writeNum);
-    // FFClock(2);
-    // if (response & 0x05){
-    //     if(debug) printf("Error while writing: %02x\n", response);
-    // }
-    // gpio_put(cs,1);
-    // FFClock();
-
-    // gpio_put(cs,0);
-    // spi_write_blocking(spi,&STOP_TRAN,1);
-    // gpio_put(cs,1);
-    // FFClock();
-    // return RES_OK;
+    gpio_put(cs,1);
+    FFClock();
+    return 0;
 }
 
 int FFClock(int clocks){
-    for (size_t i = 0; i < clocks; i++)
-    {
+    for (size_t i = 0; i < clocks; i++){
         spi_write_blocking(spi, &FF_TOKEN, 1);
     }
     // if(debug) printf("System clocked for %i byte(s)\n",clocks);
     return 1;
 }
 
-void fatalErr(const char* errMessage){
+int fatalErr(const char* errMessage, int err){
     gpio_put(cs,1);
     FFClock();
-    throw std::runtime_error(errMessage);
+    printf("----ERROR----: %s %02x\n",errMessage,err);
+    return err;
 }
 
 extern "C" int sdIoctl(unsigned int cmd, void* buf){
